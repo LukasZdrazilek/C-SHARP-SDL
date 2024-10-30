@@ -10,9 +10,13 @@ namespace MyGame
         private IntPtr window;
         private IntPtr renderer;
         private bool quit;
+        private bool paused;
         private Entities.Player player;
         private List<Platform> platforms;
+        private Entities.Enemy1 enemy1;
         private Stopwatch frameTimer;
+        private Camera camera;
+        private Entities.Interface gameInterface;
 
         public Game()
         {
@@ -30,7 +34,8 @@ namespace MyGame
                 Environment.Exit(1);
             }
 
-            renderer = SDL.SDL_CreateRenderer(window, -1, SDL.SDL_RendererFlags.SDL_RENDERER_ACCELERATED);
+            // Renderer VSYNC = ON
+            renderer = SDL.SDL_CreateRenderer(window, -1, SDL.SDL_RendererFlags.SDL_RENDERER_PRESENTVSYNC);
             if (renderer == IntPtr.Zero)
             {
                 Console.WriteLine("Renderer could not be created! SDL_Error: " + SDL.SDL_GetError());
@@ -39,19 +44,31 @@ namespace MyGame
                 Environment.Exit(1);
             }
 
-            player = new Entities.Player(375, 250, 50, 50);
+
+            /////////////////////////////////////////////////////////////////////////////////////////// Inicializace entit
+            player = new Entities.Player(375, 250, 80, 120);
+            player.LoadTextures(renderer);
+
+            enemy1 = new Entities.Enemy1(1800, 571, 79, 129);
+            enemy1.LoadTexture(renderer);
 
             platforms = new List<Platform>
             {
-                new Platform(0, 700, 1280, 10),
+                new Platform(0, 700, 2500, 10),
                 new Platform(500, 440, 300, 100),
                 new Platform(1050, 300, 100, 400)
             };
 
+            camera = new Camera(1280, 720);
+            gameInterface = new Entities.Interface("font.ttf", 24);
+
             quit = false;
+            paused = false;
             frameTimer = new Stopwatch();
         }
 
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////// Run
         public void Run()
         {
             SDL.SDL_Event e;
@@ -61,7 +78,7 @@ namespace MyGame
             {
                 // Výpočet deltaTime
                 frameTimer.Stop();
-                float deltaTime = (float)frameTimer.Elapsed.TotalSeconds;
+                float deltaTime = Math.Min((float)frameTimer.Elapsed.TotalSeconds, 0.1f);   // to avoid extreme values
                 frameTimer.Restart();
 
                 while (SDL.SDL_PollEvent(out e) != 0)
@@ -70,32 +87,59 @@ namespace MyGame
                     {
                         quit = true;
                     }
+                    // Pause button na 'P'
+                    else if (e.type == SDL.SDL_EventType.SDL_KEYDOWN && e.key.keysym.sym == SDL.SDL_Keycode.SDLK_p)
+                    {
+                        paused = !paused;
+                    }
+                    // Fix na hybani windowed hry
+                    else if (e.type == SDL.SDL_EventType.SDL_WINDOWEVENT)
+                    {
+                        if (e.window.windowEvent == SDL.SDL_WindowEventID.SDL_WINDOWEVENT_FOCUS_LOST)
+                        {
+                            paused = true;
+                        }
+                        else if (e.window.windowEvent == SDL.SDL_WindowEventID.SDL_WINDOWEVENT_FOCUS_GAINED)
+                        {
+                            paused = false;
+                        }
+                    }
                 }
 
                 var keys = SDL.SDL_GetKeyboardState(out int numKeys);
 
-                player.HandleInput(keys, deltaTime);
-                player.Update(deltaTime);
+                /////////////////////////////////////////////////////////////// Ovladani, update, enemy logic, kolize, kamera
+                if(!paused)
+                {
+                    player.HandleInput(keys, deltaTime);
+                    player.Update(deltaTime);
+                    enemy1.Logic(player, keys, deltaTime);
 
-                player.CheckPlatformCollisions(platforms, deltaTime);
+                    player.CheckPlatformCollisions(platforms, deltaTime);
 
+                    // Update camera to follow the player
+                    camera.Update(player.X, player.Y, player.Width, player.Height);
+                }
+
+                /////////////////////////////////////////////////////////////////////////////////////////////// Render objektu
                 SDL.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL.SDL_RenderClear(renderer);
-
                 SDL.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
-                // Render objektu
-                player.Render(renderer);
+                player.Render(renderer, camera);
+                enemy1.Render(renderer, camera);
                 foreach (var platform in platforms)
                 {
-                    platform.Render(renderer);
+                    platform.Render(renderer, camera);
                 }
+                gameInterface.RenderHP(renderer, player.HP);
 
                 SDL.SDL_RenderPresent(renderer);
             }
 
             SDL.SDL_DestroyRenderer(renderer);
             SDL.SDL_DestroyWindow(window);
+            gameInterface.CleanUp();
             SDL.SDL_Quit();
         }
     }

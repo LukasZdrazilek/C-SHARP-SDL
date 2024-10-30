@@ -17,10 +17,11 @@ namespace MyGame.Entities
             return rect;
         }
 
-        public void Render(IntPtr renderer)
+        public void Render(IntPtr renderer, Camera camera)
         {
-            SDL.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255); // Green color for the platforms
-            SDL.SDL_RenderFillRect(renderer, ref rect);
+            SDL.SDL_Rect cameraAdjustedRect = camera.Apply(rect);
+            SDL.SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+            SDL.SDL_RenderFillRect(renderer, ref cameraAdjustedRect);
         }
     }
 }
